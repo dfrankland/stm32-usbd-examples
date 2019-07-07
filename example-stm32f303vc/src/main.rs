@@ -4,6 +4,7 @@
 
 extern crate panic_semihosting;
 
+use embedded_hal::digital::v2::OutputPin;
 use cortex_m::asm::delay;
 use cortex_m_rt::entry;
 use stm32_usbd::UsbBus;
@@ -14,7 +15,7 @@ use cdc_acm::{SerialPort, USB_CLASS_CDC};
 
 fn configure_usb_clock() {
     let rcc = unsafe { &*stm32::RCC::ptr() };
-    rcc.cfgr.modify(|_, w| w.usbpres().set_bit());
+    rcc.cfgr.modify(|_, w| w.usbpre().set_bit());
 }
 
 #[entry]
@@ -34,11 +35,15 @@ fn main() -> ! {
     // assert!(clocks.usbclk_valid());
 
     let mut gpioa = dp.GPIOA.split(&mut rcc.ahb);
+    let mut gpioc = dp.GPIOC.split(&mut rcc.ahb);
+
+    let mut led = gpioc.pc13.into_push_pull_output(&mut gpioc.moder, &mut gpioc.otyper);
+    led.set_high().unwrap();
 
     // F3 Discovery board has a pull-up resistor on the D+ line.
     // Pull the D+ pin down to send a RESET condition to the USB bus.
     let mut usb_dp = gpioa.pa12.into_push_pull_output(&mut gpioa.moder, &mut gpioa.otyper);
-    usb_dp.set_low();
+    usb_dp.set_low().unwrap();
     delay(clocks.sysclk().0 / 100);
 
     let usb_dm = gpioa.pa11.into_af14(&mut gpioa.moder, &mut gpioa.afrh);
@@ -46,7 +51,7 @@ fn main() -> ! {
 
     configure_usb_clock();
 
-    let usb_bus = UsbBus::new(dp.USB_FS, (usb_dm, usb_dp));
+    let usb_bus = UsbBus::new(dp.USB, (usb_dm, usb_dp));
 
     let mut serial = SerialPort::new(&usb_bus);
 
